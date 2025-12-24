@@ -11,8 +11,9 @@ if (!fs.existsSync(mediaDir)) {
     fs.mkdirSync(mediaDir);
 }
 
-// מערכים לשמירת הודעות ומשימות
+// מערכים לשמירת הודעות, סטטוסים ומשימות
 let messages = [];
+let statuses = [];
 let todos = [];
 
 // טעינת משימות מקובץ אם קיים
@@ -81,6 +82,14 @@ const htmlPage = `<!DOCTYPE html>
         .status-bar { text-align: center; color: #8b9dc3; margin-bottom: 20px; font-size: 0.9em; }
         .status-bar .online { color: #25D366; }
         
+        /* Tabs */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; justify-content: center; }
+        .tab { padding: 12px 25px; border-radius: 25px; cursor: pointer; font-size: 1em; border: 2px solid #2d4a6f; background: transparent; color: #8b9dc3; transition: all 0.3s; }
+        .tab:hover { border-color: #25D366; color: #25D366; }
+        .tab.active { background: #25D366; color: white; border-color: #25D366; }
+        .tab.status-tab.active { background: #00a884; border-color: #00a884; }
+        .tab .badge { background: #dc3545; color: white; border-radius: 50%; padding: 2px 8px; font-size: 0.75em; margin-right: 8px; }
+        
         /* Sidebar TODO */
         .sidebar { width: 350px; background: #0d1b2a; border-right: 1px solid #1e3a5f; padding: 20px; overflow-y: auto; position: sticky; top: 0; height: 100vh; }
         .sidebar h2 { color: #f0ad4e; margin: 0 0 20px 0; display: flex; align-items: center; gap: 10px; font-size: 1.3em; }
@@ -109,9 +118,13 @@ const htmlPage = `<!DOCTYPE html>
         .no-todos { text-align: center; color: #8b9dc3; padding: 30px; font-size: 0.9em; }
         
         /* Messages */
-        .message { background: #1e3a5f; border-radius: 12px; padding: 15px; margin: 10px 0; border-right: 4px solid #25D366; }
+        .message { background: #1e3a5f; border-radius: 12px; padding: 15px; margin: 10px 0; border-right: 4px solid #25D366; position: relative; }
         .message.sent { background: #0d4a3e; border-right-color: #128C7E; margin-right: 50px; }
         .message.sent .sender { color: #128C7E; }
+        .message.status-msg { border-right-color: #00a884; background: #0d2a3a; }
+        
+        .delete-msg-btn { position: absolute; top: 10px; left: 10px; background: transparent; border: none; color: #dc3545; cursor: pointer; font-size: 1.2em; opacity: 0.5; transition: opacity 0.2s; }
+        .delete-msg-btn:hover { opacity: 1; }
         
         .sender { color: #25D366; font-weight: bold; font-size: 1.1em; }
         .chat { color: #8b9dc3; font-size: 0.9em; }
@@ -159,6 +172,8 @@ const htmlPage = `<!DOCTYPE html>
         .status.error { color: #dc3545; }
         .no-messages { text-align: center; color: #8b9dc3; padding: 50px; }
         
+        #statuses-container { display: none; }
+        
         @media (max-width: 900px) {
             .layout { flex-direction: column-reverse; }
             .sidebar { width: 100%; height: auto; position: relative; border-right: none; border-top: 1px solid #1e3a5f; }
@@ -184,8 +199,22 @@ const htmlPage = `<!DOCTYPE html>
                 <div class="status-bar">
                     <span class="online">● מחובר</span> | הודעות מתעדכנות אוטומטית
                 </div>
-                <div id="messages">
-                    <div class="no-messages">ממתין להודעות...</div>
+                
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('messages')">💬 הודעות <span class="badge" id="msg-count">0</span></button>
+                    <button class="tab status-tab" onclick="switchTab('statuses')">🔄 סטטוסים <span class="badge" id="status-count">0</span></button>
+                </div>
+                
+                <div id="messages-container">
+                    <div id="messages">
+                        <div class="no-messages">ממתין להודעות...</div>
+                    </div>
+                </div>
+                
+                <div id="statuses-container">
+                    <div id="statuses">
+                        <div class="no-messages">ממתין לסטטוסים...</div>
+                    </div>
                 </div>
             </div>
         </main>
@@ -193,8 +222,18 @@ const htmlPage = `<!DOCTYPE html>
 
     <script>
         let lastUpdate = 0;
+        let lastStatusUpdate = 0;
         let lastTodoUpdate = 0;
         let currentTodos = [];
+        let currentTab = 'messages';
+        
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelector('.tab' + (tab === 'statuses' ? '.status-tab' : ':not(.status-tab)')).classList.add('active');
+            document.getElementById('messages-container').style.display = tab === 'messages' ? 'block' : 'none';
+            document.getElementById('statuses-container').style.display = tab === 'statuses' ? 'block' : 'none';
+        }
         
         function isInTodos(msgIndex) {
             return currentTodos.some(t => t.msgIndex === msgIndex);
@@ -245,6 +284,17 @@ const htmlPage = `<!DOCTYPE html>
             }
         }
 
+        async function deleteMessage(index, isStatus) {
+            if (!confirm('למחוק את ההודעה?')) return;
+            try {
+                await fetch('/messages/' + index + '?isStatus=' + isStatus, { method: 'DELETE' });
+                lastUpdate = 0;
+                lastStatusUpdate = 0;
+                loadMessages();
+                loadStatuses();
+            } catch (error) {}
+        }
+
         async function addToTodo(msgIndex, sender, chat, content, time) {
             const btn = event.target;
             btn.disabled = true;
@@ -279,14 +329,14 @@ const htmlPage = `<!DOCTYPE html>
         async function deleteTodo(todoId) {
             if (confirm('למחוק את המשימה?')) {
                 await fetch('/todos/' + todoId, { method: 'DELETE' });
-                await loadTodos(); // חכה לעדכון המשימות קודם
-                lastUpdate = 0; // אפס כדי לכפות רענון
-                await loadMessages(); // עדכן את הכפתורים
+                await loadTodos();
+                lastUpdate = 0;
+                await loadMessages();
             }
         }
 
         function renderTodos(todosData) {
-            currentTodos = todosData; // שמור לבדיקה
+            currentTodos = todosData;
             const container = document.getElementById('todo-list');
             const pending = todosData.filter(t => !t.completed).length;
             const done = todosData.filter(t => t.completed).length;
@@ -299,7 +349,6 @@ const htmlPage = `<!DOCTYPE html>
                 return;
             }
             
-            // מיון - לא הושלמו קודם
             const sorted = [...todosData].sort((a, b) => a.completed - b.completed);
             
             let html = '';
@@ -343,20 +392,21 @@ const htmlPage = `<!DOCTYPE html>
             return html + '</div>';
         }
 
-        function renderMessages(messagesData) {
-            const container = document.getElementById('messages');
+        function renderMessages(messagesData, isStatus = false) {
+            const containerId = isStatus ? 'statuses' : 'messages';
+            const container = document.getElementById(containerId);
+            const countId = isStatus ? 'status-count' : 'msg-count';
+            
+            document.getElementById(countId).textContent = messagesData.length;
+            
             if (messagesData.length === 0) {
-                container.innerHTML = '<div class="no-messages">ממתין להודעות...</div>';
+                container.innerHTML = '<div class="no-messages">' + (isStatus ? 'ממתין לסטטוסים...' : 'ממתין להודעות...') + '</div>';
                 return;
             }
             
-            const newUpdate = JSON.stringify(messagesData).length;
-            if (newUpdate === lastUpdate) return;
-            lastUpdate = newUpdate;
-            
             let html = '';
             messagesData.forEach((msg, index) => {
-                const msgId = 'msg-' + index;
+                const msgId = (isStatus ? 'status-' : 'msg-') + index;
                 const escapedChatId = (msg.chatId || '').replace(/'/g, "\\\\'");
                 const escapedContent = (msg.content || '').replace(/'/g, "\\\\'").replace(/"/g, '&quot;').substring(0, 50);
                 const escapedSender = (msg.sender || '').replace(/'/g, "\\\\'");
@@ -391,15 +441,16 @@ const htmlPage = `<!DOCTYPE html>
                 
                 const repliesHtml = renderReplies(msg.replies);
                 
-                html += '<div class="message' + (isSent ? ' sent' : '') + '">' +
+                html += '<div class="message' + (isSent ? ' sent' : '') + (isStatus ? ' status-msg' : '') + '">' +
+                    '<button class="delete-msg-btn" onclick="deleteMessage(' + index + ', ' + isStatus + ')" title="מחק הודעה">🗑️</button>' +
                     '<div class="sender">' + (isSent ? '👤 אני' : '👤 ' + msg.sender) + '</div>' +
-                    '<div class="chat">💬 ' + msg.chat + '</div>' +
+                    '<div class="chat">' + (isStatus ? '🔄 סטטוס' : '💬 ' + msg.chat) + '</div>' +
                     quotedHtml +
                     (msg.content ? '<div class="content">' + msg.content + '</div>' : '') +
                     linkHtml + mediaHtml +
                     '<div class="time">🕐 ' + msg.time + '</div>' +
                     repliesHtml +
-                    (!isSent ? '<div class="action-buttons">' +
+                    (!isSent && !isStatus ? '<div class="action-buttons">' +
                         '<button class="action-btn reply-btn" onclick="toggleReply(\\'' + msgId + '\\')">↩️ הגב</button>' +
                         (isInTodos(index) 
                             ? '<button class="action-btn todo-add-btn added" disabled>✓ ברשימה</button>'
@@ -415,19 +466,37 @@ const htmlPage = `<!DOCTYPE html>
             });
             
             container.innerHTML = html;
-            window.scrollTo(0, document.body.scrollHeight);
         }
 
         async function loadMessages() {
             try {
                 const response = await fetch('/messages');
-                renderMessages(await response.json());
+                const data = await response.json();
+                const newUpdate = JSON.stringify(data).length;
+                if (newUpdate !== lastUpdate) {
+                    renderMessages(data, false);
+                    lastUpdate = newUpdate;
+                }
+            } catch (error) {}
+        }
+
+        async function loadStatuses() {
+            try {
+                const response = await fetch('/statuses');
+                const data = await response.json();
+                const newUpdate = JSON.stringify(data).length;
+                if (newUpdate !== lastStatusUpdate) {
+                    renderMessages(data, true);
+                    lastStatusUpdate = newUpdate;
+                }
             } catch (error) {}
         }
 
         loadMessages();
+        loadStatuses();
         loadTodos();
         setInterval(loadMessages, 2000);
+        setInterval(loadStatuses, 3000);
         setInterval(loadTodos, 3000);
     </script>
 </body>
@@ -441,6 +510,25 @@ const client = new Client({
 
 // API - הודעות
 app.get('/messages', (req, res) => res.json(messages));
+app.get('/statuses', (req, res) => res.json(statuses));
+
+app.delete('/messages/:index', (req, res) => {
+    const index = parseInt(req.params.index);
+    const isStatus = req.query.isStatus === 'true';
+    
+    if (isStatus) {
+        if (index >= 0 && index < statuses.length) {
+            statuses.splice(index, 1);
+            console.log('🗑️ Status deleted');
+        }
+    } else {
+        if (index >= 0 && index < messages.length) {
+            messages.splice(index, 1);
+            console.log('🗑️ Message deleted');
+        }
+    }
+    res.json({ success: true });
+});
 
 app.post('/send', async (req, res) => {
     try {
@@ -526,10 +614,13 @@ client.on('message', async (message) => {
         const time = new Date().toLocaleString('he-IL');
         const isSent = message.fromMe;
         
+        // בדיקה אם זה סטטוס
+        const isStatus = message.from === 'status@broadcast' || chatId.includes('status');
+        
         let mediaPath = null, mediaType = null, linkPreviews = [], quotedMessage = null;
         
-        // תגובות
-        if (message.hasQuotedMsg) {
+        // תגובות (רק להודעות רגילות)
+        if (!isStatus && message.hasQuotedMsg) {
             try {
                 const quoted = await message.getQuotedMessage();
                 if (quoted) {
@@ -572,10 +663,17 @@ client.on('message', async (message) => {
             if (preview) linkPreviews.push(preview);
         }
         
-        messages.push({ sender, chat: chatName, content: linkify(message.body), time, chatId, mediaPath, mediaType, linkPreviews, quotedMessage, isSent, replies: [] });
-        if (messages.length > 100) messages = messages.slice(-100);
+        const msgData = { sender, chat: chatName, content: linkify(message.body), time, chatId, mediaPath, mediaType, linkPreviews, quotedMessage, isSent, replies: [] };
         
-        console.log(`${isSent ? '📤' : '📩'} ${sender}: ${message.body?.substring(0, 40) || '[מדיה]'}...`);
+        if (isStatus) {
+            statuses.push(msgData);
+            if (statuses.length > 50) statuses = statuses.slice(-50);
+            console.log(`🔄 Status from ${sender}: ${message.body?.substring(0, 30) || '[מדיה]'}...`);
+        } else {
+            messages.push(msgData);
+            if (messages.length > 100) messages = messages.slice(-100);
+            console.log(`${isSent ? '📤' : '📩'} ${sender}: ${message.body?.substring(0, 40) || '[מדיה]'}...`);
+        }
     } catch (error) {
         console.error('Error:', error.message);
     }
