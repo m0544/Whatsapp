@@ -608,14 +608,30 @@ client.on('ready', () => {
 client.on('message', async (message) => {
     try {
         const chat = await message.getChat();
-        const sender = message._data.notifyName || message.from;
-        const chatName = chat.name || 'פרטי';
         const chatId = message.from;
         const time = new Date().toLocaleString('he-IL');
         const isSent = message.fromMe;
         
         // בדיקה אם זה סטטוס
         const isStatus = message.from === 'status@broadcast' || chatId.includes('status');
+        
+        // קבלת שם השולח - עבור סטטוסים צריך לחפש את המחבר האמיתי
+        let sender = message._data.notifyName || message.from;
+        let chatName = chat.name || 'פרטי';
+        
+        if (isStatus) {
+            // עבור סטטוסים, השולח האמיתי נמצא ב-author או _data.author
+            const authorId = message.author || message._data.author;
+            if (authorId) {
+                try {
+                    const contact = await client.getContactById(authorId);
+                    sender = contact.pushname || contact.name || contact.number || authorId.split('@')[0];
+                } catch (e) {
+                    sender = authorId ? authorId.split('@')[0] : 'לא ידוע';
+                }
+            }
+            chatName = 'סטטוס';
+        }
         
         let mediaPath = null, mediaType = null, linkPreviews = [], quotedMessage = null;
         
