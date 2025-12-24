@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# WhatsApp session data (each user needs their own)
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Media files (generated)
+media/
+
+# Generated HTML
+messages.html
+
+# User data
+todos.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+

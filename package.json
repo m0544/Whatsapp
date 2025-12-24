@@ -1,0 +1,29 @@
+{
+  "name": "whatsapp-reader",
+  "version": "1.0.0",
+  "description": "קורא הודעות מוואטסאפ עם תמיכה בעברית, תמונות, סרטונים וקישורים",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "history": "node read-chat-history.js",
+    "reset": "rmdir /s /q .wwebjs_auth 2>nul & rmdir /s /q .wwebjs_cache 2>nul & echo Session cleared!"
+  },
+  "keywords": [
+    "whatsapp",
+    "hebrew",
+    "rtl",
+    "messages",
+    "reader"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^5.2.1",
+    "link-preview-js": "^4.0.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.23.0"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
